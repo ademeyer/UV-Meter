@@ -1,35 +1,46 @@
 #include "EEPROM_Chip.h"
 
-EEPROM_Chip::EEPROM_Chip(uint16_t pg_size) : 
-    page_size(pg_size) 
+EEPROM_Chip::EEPROM_Chip(uint32_t pg_size, uint32_t max) : 
+    page_size(pg_size), max_size(max) 
 {}
 
-int16_t EEPROM_Chip::ReadEEPROM(uint16_t addr, uint8_t* data, uint16_t amt)
+int16_t EEPROM_Chip::ReadEEPROM(uint32_t _startAddr, uint8_t* data, uint16_t nBytes)
 {
-    int16_t total = 0;
-    while(amt > 0)
+    uint16_t pg_size = page_size - 3;
+    if((_startAddr + nBytes) >= max_size) return -1;
+    int16_t tRead = 0;
+    while(nBytes > 0)
     {
-        uint16_t ret = amt > page_size ? page_size : amt;
-        auto resp = read_eeprom(addr, &data[total], ret);
-        if (resp <= 0) return resp;
-        total += resp;
-        amt -= resp;
-        addr += resp;
+        int16_t nRead = nBytes < pg_size ? nBytes : pg_size;
+        int16_t amtRead = 0;
+
+        if((amtRead = read_eeprom(_startAddr, data, nRead)) <= 0) break;
+
+        tRead += amtRead;
+        nBytes -= amtRead;
+        _startAddr += amtRead;
+        data += amtRead;
     }
-    return total;
+    return tRead;
 }
 
-int16_t EEPROM_Chip::WriteEEPROM(uint16_t addr, uint8_t* data, uint16_t len)
+int16_t EEPROM_Chip::WriteEEPROM(uint32_t _startAddr, uint8_t* data, uint16_t nBytes)
 {
-    uint16_t pos = 0;
-    while(len > 0)
-    {
-        uint16_t ret = len > page_size ? page_size : len;
-        auto resp = write_eeprom(addr, &data[pos], ret);
-        if (resp == -1) return resp;
-        len -= ret;
-        addr += ret;
-        pos += ret;
-    }
-    return 0;
-}
+    if((_startAddr + nBytes) >= max_size) return -1;
+    int16_t i2c_success = 0;
+    uint16_t pg_size = page_size;
+	while(nBytes > 0)
+	{
+        uint16_t nPage = pg_size - (_startAddr % pg_size); 
+        int16_t nWrite = nPage == 0 ? (pg_size - 3) : nPage;  //! something maybe off here
+        nWrite = nWrite >= nBytes ? nBytes : nWrite;
+
+        if((i2c_success = write_eeprom(_startAddr, data, nWrite)) != 0)
+            break;
+            
+        nBytes -= nWrite;
+            _startAddr += nWrite;
+        data += nWrite;
+	}
+    return i2c_success;
+}   

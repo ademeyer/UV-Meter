@@ -1,11 +1,8 @@
 #include <Arduino.h>
 #define USE_MALLOC_ 0
 //User libraries
-//#include "U8glib.h"
 #include <DS3231.h>
 #include <Wire.h>
-// #include <Adafruit_GFX.h>
-// #include <Adafruit_SSD1306.h>
 #include "ArduinoEEPROM.h"
 #include "FloatingInteger.h"
 #include "IOX0_Email.h"
@@ -16,12 +13,6 @@
 #define SENSOR_PIN A1
 
 //Object definitions
-// #define SCREEN_WIDTH 128 // OLED display width, in pixels
-// #define SCREEN_HEIGHT 32 // OLED display height, in pixels
-// #define OLED_RESET     -1
-// #define SCREEN_ADDRESS 0x3C
-//Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
 DS3231 myRTC;
 ArduinoEEPROM mem(0x57);
 FloatingInteger ft;
@@ -64,56 +55,6 @@ int convertIntToString(int value, char* res, int len, int sf = 0)
 
   return snprintf(res, len, format, value);
 }
-
-// void draw(const UV_data& uvd) 
-// {
-//   auto it = uvd.dt;
-//   // char dateandtime[6] = "";
-//   // char temp[32] = "";
-//   // auto it = uvd.dt;
-//   // memset(temp, 0, sizeof(temp));
-//   // int num = convertIntToString(it.hour, temp, sizeof(temp));
-//   // strcat(temp, ":");
-//   // ++num;
-//   // convertIntToString(it.minute, &temp[num], (num+2));
-//   // strcpy(dateandtime, temp);
-
-
-//   // char u[4] = "", umax[4] = "", umin[4] = "", uirrad[4] = "";
-//   // num = convertIntToString(round(ft.NumberToFloat(uvd.uv_index)), u, sizeof(u), 2);
-
-//   // num = convertIntToString(round(ft.NumberToFloat(max_index)), umax, sizeof(umax), 2);
-
-//   // num = convertIntToString(round(ft.NumberToFloat(min_index)), umin, sizeof(umin), 2);
-
-//   // num = convertIntToString(round(ft.NumberToFloat(uvd.uv_irradiance)), uirrad, sizeof(uirrad), 2);
-
-//   // Here we print converted values
-//   display.clearDisplay();
-//   display.setTextSize(1);      // Normal 1:1 pixel scale
-//   display.setTextColor(SSD1306_WHITE); // Draw white text
-//   display.setCursor(48, 10);
-//   display.cp437(true);
-//   display.write(it.hour);
-//   display.write(':');
-//   display.write(it.minute);
-//   display.display();
-//   //delay(2000);
-
-//   // u8g.setFont(u8g_font_6x12);
-//   // u8g.drawStr(48, 10, dateandtime);
-//   // u8g.drawStr(105, 27, umax); // Max_index
-//   // u8g.drawStr(105, 56, umin); // Min_index
-//   // u8g.setFont(u8g_font_5x7);
-//   // u8g.drawStr(105, 17, "MAX");
-//   // u8g.drawStr(105, 46, "MIN");
-//   // u8g.drawStr(63, 58, "mW/cm2");
-//   // u8g.drawStr(7, 20, "UV Index");
-//   // u8g.setFont(u8g_font_fub35n);
-//   // u8g.drawStr(2, 60, u);
-//   // u8g.setFont(u8g_font_fub14);
-//   // u8g.drawStr(65, 50, uirrad);
-// }
 
 
 /**
@@ -195,17 +136,25 @@ void UpdateDateTime(datetime_data& dateTime)
 void UpdateUVDataPacket(UV_data& data)
 {
   UpdateDateTime(data.dt);
-  // int x = ReadAnalogueData(SENSOR_PIN);
-  // Serial.print("analog (x) = ");
-  // Serial.println(x);
   if(counter >= 65535)
     counter = 0;
   data.count = counter;
   auto value = SampleToUVIndex(ReadAnalogueData(SENSOR_PIN));
   data.uv_index = ft.FloatToNumber(value, 3);
-  // ! ToDo: find irradiance values
+  data.uv_irradiance = ft.FloatToNumber((value * 0.025), 3);
 }
 
+/**
+ * @brief Get the bytes representation of a datetime_data object.
+ *
+ * This function takes a datetime_data object as input and returns its bytes representation.
+ * The bytes are arranged in the following order: year, month, day, hour, minute, second.
+ *
+ * @param[in] dt The datetime_data object to be converted to bytes.
+ * @param[out] data A pointer to an array of uint8_t where the bytes representation will be stored.
+ *
+ * @return The number of bytes written to the data array.
+ */
 int GetDateTimeBytes(const datetime_data& dt, uint8_t* data)
 {
   int pos = 0;
@@ -219,6 +168,17 @@ int GetDateTimeBytes(const datetime_data& dt, uint8_t* data)
   return pos;
 }
 
+/**
+ * @brief Get the bytes representation of a datetime_data object.
+ *
+ * This function takes a datetime_data object as input and returns its bytes representation.
+ * The bytes are arranged in the following order: year, month, day, hour, minute, second.
+ *
+ * @param[in] dt The datetime_data object to be converted to bytes.
+ * @param[out] data A pointer to an array of uint8_t where the bytes representation will be stored.
+ *
+ * @return The number of bytes written to the data array.
+ */
 datetime_data GetDateTimeFromBytes(const uint8_t* data)
 {
   datetime_data dt;
@@ -230,6 +190,18 @@ datetime_data GetDateTimeFromBytes(const uint8_t* data)
   dt.second = data[5];
   return dt;
 }
+
+/**
+ * @brief Convert UV data packet to bytes.
+ *
+ * This function takes a UV data packet as input and returns its bytes representation.
+ * The bytes are arranged in the following order: count, date-time, uv_index, uv_irradiance.
+ *
+ * @param[in] data The UV data packet to be converted to bytes.
+ * @param[out] buf A pointer to an array of uint8_t where the bytes representation will be stored.
+ *
+ * @return The number of bytes written to the data array.
+ */
 int ConvertUVDataToByte(const UV_data& data, uint8_t* buf)
 {
   /*
@@ -255,6 +227,23 @@ int ConvertUVDataToByte(const UV_data& data, uint8_t* buf)
  return pos;
 }
 
+/**
+ * @brief Convert bytes to UV data packet.
+ *
+ * This function takes a byte array as input and returns a UV data packet.
+ * The byte array is expected to be in the following format:
+ * - 2 bytes for the count
+ * - 6 bytes for the date-time
+ * - 2 bytes for the UV index
+ * - 2 bytes for the UV irradiance
+ *
+ * @param[in] buf The byte array containing the UV data packet.
+ * @param[in] size The size of the byte array.
+ * @return A UV_data object containing the parsed data.
+ *
+ * @see UV_data
+ * @see GetDateTimeFromBytes
+ */
 UV_data ConvertBytesToUVData(uint8_t* buf, uint16_t size) 
 {
 /*
@@ -282,6 +271,17 @@ UV_data ConvertBytesToUVData(uint8_t* buf, uint16_t size)
  return result;
 }
 
+/**
+ * @brief Converts a datetime_data object to a string format.
+ *
+ * This function takes a datetime_data object as input and returns its string representation.
+ * The string format is "YY/MM/DD HH:MM:SS".
+ *
+ * @param[in] dt The datetime_data object to be converted to string.
+ * @param[out] str A pointer to a character array where the string representation will be stored.
+ *
+ * @return The number of bytes written to the str array.
+ */
 int formatTimeToString(const datetime_data& dt, char* str)
 {
   int pos = 0;
@@ -301,6 +301,21 @@ int formatTimeToString(const datetime_data& dt, char* str)
   return pos;
 }
 
+/**
+ * @brief Converts a UV data packet to a string format.
+ *
+ * This function takes a UV data packet as input and returns its string representation.
+ * The string format is "count,date-time,uv_index,uv_irradiance".
+ *
+ * @param[in] data The UV data packet to be converted to string.
+ * @param[out] buffer A pointer to a character array where the string representation will be stored.
+ * @param[in] size The size of the buffer.
+ *
+ * @return The number of bytes written to the buffer.
+ *
+ * @see UV_data
+ * @see formatTimeToString
+ */
 int ConvertUVDataToString(const UV_data& data, char* buffer, int size)
 {
   // 00001,01/12/24 12:45:55,00,00,00,00\r\n = 38
@@ -318,6 +333,13 @@ int ConvertUVDataToString(const UV_data& data, char* buffer, int size)
   return pos <= size ? pos : size;
 }
 
+/**
+ * @brief Prints the date and time in the format "YY/MM/DD HH:MM:SS".
+ *
+ * This function takes a datetime_data object as input and prints its date and time in the specified format.
+ *
+ * @param[in] dt The datetime_data object containing the date and time information.
+ */
 void PrintDateTime(const datetime_data& dt)
 {
   Serial.print(dt.year);
@@ -333,6 +355,13 @@ void PrintDateTime(const datetime_data& dt)
   Serial.println(dt.second);
 }
 
+/**
+ * @brief Prints the UV data packet.
+ *
+ * This function takes a UV data packet as input and prints its content.
+ *
+ * @param[in] data The UV data packet to be printed.
+ */
 void PrintUVData(const UV_data& data)
 {
   Serial.print(F("count: "));
@@ -348,6 +377,19 @@ void PrintUVData(const UV_data& data)
   Serial.println();
 }
 
+/**
+ * @brief Saves the UV data packet to memory.
+ *
+ * This function takes a UV data packet as input and saves its bytes representation to memory.
+ * The memory is organized as an array of bytes, where each UV data packet is stored consecutively.
+ *
+ * @param[in] data The UV data packet to be saved.
+ *
+ * @return void.
+ *
+ * @see ConvertUVDataToByte
+ * @see mem.WriteEEPROM
+ */
 void SaveToMemory(const UV_data& data)
 {
   // check whether there is enough memory to store
@@ -366,17 +408,40 @@ void SaveToMemory(const UV_data& data)
   Serial.println(saveIndex - sizeof(UV_data));
 }
 
-uint16_t ReadFromMemoryInStr(char* buf, size_t size, uint16_t& Index)
+/**
+ * @brief Reads a string from memory.
+ *
+ * This function reads a string from memory and stores it in the provided buffer.
+ * The memory is organized as an array of bytes, where each UV data packet is stored consecutively.
+ * The function reads a specified number of bytes starting from the given index.
+ *
+ * @param[out] buf The buffer where the string representation will be stored.
+ * @param[in] size The size of the buffer.
+ * @param[in, out] Index The index from which to start reading.
+ *
+ * @return The number of bytes read from memory.
+ *
+ * @see ConvertUVDataToString
+ * @see mem.ReadEEPROM
+ */
+uint16_t ReadFromMemoryInStr(char* buf, size_t size, size_t amtToRead, uint16_t& Index)
 {
   /* 
   * To calculate bytes to read from memory:
   * we expected 32 char conversion for each size of UV_data
   */
   uint8_t data_size = sizeof(UV_data);
-  uint8_t factor = size / 32; 
+  uint8_t f = amtToRead / data_size; 
+  uint8_t factor = f * 32 <= size ? f : (size / 32);
   uint16_t expected_len = factor * data_size;
-  uint8_t temp[expected_len];
+  uint8_t temp[expected_len] = {0};
   uint16_t amt = mem.ReadEEPROM(Index, temp, sizeof(temp));
+  Serial.print(F("Index = "));
+  Serial.println(Index);
+  Serial.print(F("expected_len = "));
+  Serial.println(expected_len);
+  Serial.print(F("amt = "));
+  Serial.println(amt);
 
   if(amt > expected_len)
   {
@@ -389,34 +454,70 @@ uint16_t ReadFromMemoryInStr(char* buf, size_t size, uint16_t& Index)
     auto data = ConvertBytesToUVData(&temp[(i * data_size)], (amt - (i * data_size)));
     readBytes += ConvertUVDataToString(data, &buf[readBytes], (size - readBytes));
   }
+  ++readBytes;
   readBytes = readBytes > size ? size : readBytes;
   buf[readBytes] = '\0'; // null terminate
   Index += amt;
   return readBytes;
 }
 
+/**
+ * @brief Checks if the current time is later than or equal to the specified time.
+ *
+ * This function takes a datetime_data object representing the current time and another datetime_data object representing the specified time.
+ * It returns true if the current time is later than or equal to the specified time, and false otherwise.
+ *
+ * @param[in] nowTime The datetime_data object representing the current time.
+ * @param[in] chk The datetime_data object representing the specified time.
+ *
+ * @return true if the current time is later than or equal to the specified time, false otherwise.
+ */
 bool isTime(datetime_data nowTime, datetime_data chk)
 {
   return nowTime.hour >= chk.hour && nowTime.minute >= chk.minute && nowTime.second >= chk.second;
 }
 
-void Handle_SendEmail(datetime_data& dt)
+/**
+ * @brief Handles sending an email with the UV data packet.
+ *
+ * This function checks if there is any UV data packet stored in memory and sends an email with the data if necessary.
+ * The email contains the UV data packet as a CSV attachment.
+ *
+ * @param[in] dt The datetime_data object containing the date and time information.
+ *
+ * @return void.
+ *
+ * @see UV_data
+ * @see ConvertUVDataToString
+ * @see ReadFromMemoryInStr
+ * @see send_email_with_attachment
+ */
+void Handle_SendEmail(const datetime_data dt)
 {
-  static datetime_data gsm_timer = dt;
+  static uint32_t gsm_timer = millis();
   // check timestamp
-  if(saveIndex > 0 && isTime(dt, datetime_data(gsm_timer.year, gsm_timer.month, gsm_timer.date, (dt.hour + 0), (gsm_timer.minute + 1), gsm_timer.second)))
+  //if(/*saveIndex > 0 && */isTime(dt, datetime_data(gsm_timer.year, gsm_timer.month, gsm_timer.date, (dt.hour + 0), (gsm_timer.minute + 1), gsm_timer.second)))
+  if(saveIndex > 5 && millis() > gsm_timer + 10000)
   {
-    if(!bringup_gprs_context()) 
+    gsm_timer = millis();
     {
-      Serial.println(F("Failed to bring up GPRS context"));
-      return;
+      if(!bringup_gprs_context()) 
+      {
+        Serial.println(F("Failed to bring up GPRS context"));
+        close_network();
+        return;
+      }
     }
 
     {
-      Sender sender("UV Robot", "uvdata44@gmail.com", "Teleport123*");
-      Email_User main_receiver("server", "server@gmail.com");
-      Email_User cc_receiver[] = { Email_User("Adebayo Timileyin", "adebayotimileyin@gmail.com") };
-      if(!init_emails_addr(sender, main_receiver, cc_receiver, sizeof(cc_receiver) / sizeof(Email_User)))
+      //Sender sender("UV Robot", "uvdata44@gmail.com", "Teleport123*");
+      //Sender sender("UV Robot", "uv.meter@yahoo.com", "Teleport123*");
+      Sender sender("Cellco RMS", "no-reply@mail.cellco.com.ng", "PiWQGJgTbQt6rq3");
+      //Email_User main_receiver("Azeezat", "onigemoazeezat1@gmail.com");
+      Email_User main_receiver("Timileyin", "adebayotimileyin@gmail.com");
+      //Email_User cc_receiver[] = { Email_User("A. T.", "adebayotimileyin@gmail.com") };
+      //if(!init_emails_addr(sender, main_receiver, cc_receiver, sizeof(cc_receiver) / sizeof(Email_User)))
+      if(!init_emails_addr(sender, main_receiver))
       {
         Serial.println(F("Failed to initialize email addresses"));
         close_network();
@@ -441,34 +542,49 @@ void Handle_SendEmail(datetime_data& dt)
     while(readIndex < saveIndex && success)
     {
       Serial.println(F("Here 0"));
-      success &= init_email_subject_body("UV DATA DUMP", Email_Body, strlen_P(Email_Body));
+
+      {
+        success &= init_email_subject_body("UV DATA DUMP", Email_Body, strlen_P(Email_Body));
+      }
       int tlen = 0;
       memset(attach_ptr, 0, sizeof(attach_ptr));
 
       // Get name of attachment file
       char _fileName[24] = "UVLog_";
       sprintf(_fileName, "UVLog_%02d%02d_%d.csv", dt.hour, dt.minute, readIndex);
-      Serial.print(F("_fileName = "));
-      Serial.println(_fileName);
       success &= init_attachment_data(_fileName, MAX_ATTACHMENT_SIZE);
       // add attachments
       if(success)
       {
+
         uint16_t send_len = MAX_ATTACHMENT_SIZE;
+        if(saveIndex < send_len) send_len = saveIndex;
 
         while(send_len > 0)
         {
 #if USE_MALLOC_
           tlen = ReadFromMemoryInStr(attach_ptr, send_len, readIndex);
 #else
-          tlen = ReadFromMemoryInStr(attach_ptr, sizeof(attach_ptr), readIndex);
+          int amtToRead = sizeof(attach_ptr);
+          if(send_len / sizeof(attach_ptr) == 0)
+            amtToRead = send_len % sizeof(attach_ptr);
+
+          Serial.print(F("amtToRead = "));
+          Serial.println(amtToRead);
+          tlen = ReadFromMemoryInStr(attach_ptr, sizeof(attach_ptr), amtToRead, readIndex);
 #endif
-          if(tlen == 0)
+          if(tlen == 0 && amtToRead > 0)
           {
             Serial.println(F("Failed to read from memory"));
             break;
           } 
           fill_email_attachment(attach_ptr, tlen);
+          
+          Serial.print(F("tlen: "));
+          Serial.print(tlen);
+          Serial.print(F(" send_len: "));
+          Serial.println(send_len);
+
           send_len -= tlen;
         }
         // If we didn't send up to the length set for GSM module, we should inform it that we are done sending what we have
@@ -476,16 +592,18 @@ void Handle_SendEmail(datetime_data& dt)
           close_email_attachment();
       }
       // send email with attachment
-      success &= send_email_with_attachment();
+      if(success)
+        success &= send_email_with_attachment();
       Serial.println(F("Here 1"));
     }
     close_network();
-    if(success)
+    if(success && readIndex == saveIndex)
     {
       saveIndex = 0;
+      counter = 0;
     }
-    Serial.print(F("saveIndex = "));
-    Serial.println(saveIndex);
+    Serial.print(F("readIndex = "));
+    Serial.println(readIndex);
 
 #if USE_MALLOC_
     if(attach_ptr)
@@ -493,7 +611,7 @@ void Handle_SendEmail(datetime_data& dt)
     attach_ptr = NULL;
 #endif
     Serial.println(F("Here 2"));
-    gsm_timer = dt;
+    
     //return;
   }
 }
@@ -508,11 +626,13 @@ void setup()
 
 void loop() 
 {
-  static datetime_data timer_data;
+  static uint32_t timer_data = millis();
   UV_data newData;
   UpdateUVDataPacket(newData);
-  if(isTime(newData.dt, datetime_data(timer_data.year, timer_data.month, timer_data.date, timer_data.hour, (timer_data.minute + 0), timer_data.second + 10)))
+  //if(isTime(newData.dt, datetime_data(timer_data.year, timer_data.month, timer_data.date, timer_data.hour, (timer_data.minute + 0), timer_data.second + 10)))
+  if(millis() > timer_data + 5000)
   {
+    timer_data = millis();
     // find max and min values
     if(ft.NumberToFloat(newData.uv_index) > ft.NumberToFloat(max_index))
       max_index = newData.uv_index;
@@ -520,11 +640,12 @@ void loop()
       min_index = newData.uv_index;
 
     SaveToMemory(newData);
-    timer_data = newData.dt;
+    //timer_data = newData.dt;
     ++counter;
     PrintUVData(newData);
   }
 
   // send email if necessary
   Handle_SendEmail(newData.dt);
+  delay(250);
 }
